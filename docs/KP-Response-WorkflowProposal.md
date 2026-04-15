@@ -129,18 +129,7 @@ Cody can build the ticket creation into the "Send to CAD" button. His app alread
 
 ## MODEL SELECTION FOR LAYOUT GENERATION
 
-Worth a brief discussion. The sales app currently uses Opus for everything. For the tent layout generation call specifically:
-
-| Factor | Opus | Sonnet |
-|---|---|---|
-| Cost per call | ~$0.30-0.50 | ~$0.03-0.05 |
-| Speed | 15-30s | 3-8s |
-| Quality for structured JSON output | Excellent | Excellent |
-| Quality for spatial reasoning | Excellent | Good (test needed) |
-
-**My recommendation:** Start with Sonnet for layout generation. The task is well-constrained (known tent types, known sizing rules, JSON output format). If Sonnet's spatial suggestions aren't good enough, upgrade to Opus. But given the sales rep reviews and edits the layout anyway, Sonnet's speed advantage (3-8s vs 15-30s) matters more than marginal quality.
-
-This requires making the model selectable in `claude-proxy` instead of hardcoded. Small change, worth doing regardless.
+**Opus.** The sales app already runs Opus for everything and it works. Spatial reasoning for tent layout generation is a high-value task - not the place to optimize for cost. Estimated ~$0.30-0.50 per layout call at 10-50 calls/day is well within budget. Keep it simple, keep it consistent with the rest of the app. If we ever need to optimize cost later, we can evaluate Sonnet then.
 
 ---
 
@@ -169,8 +158,7 @@ Everything from our previous exchange still stands:
 1. Review this proposal and confirm alignment with sales app architecture
 2. Scope the "Send to CAD" function (extend `pdf-to-sharepoint` pattern)
 3. Scope the Layout tab container and Claude API call for layout generation
-4. Make `claude-proxy` model-selectable (or add a layout-specific endpoint)
-5. Coordinate with Jon on planner component embedding
+4. Coordinate with Jon on planner component embedding
 
 ### For Kyle
 1. Create `CAD` subfolder convention in Jobs library
