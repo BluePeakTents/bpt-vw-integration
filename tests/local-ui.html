@@ -169,6 +169,7 @@
     <div id="map"></div>
   </main>
 
+  <script src="keys.local.js" onerror="void 0"></script>
   <script>
     const els = {
       jsKey: document.getElementById('jsKey'),
@@ -326,6 +327,15 @@
     els.mapType.addEventListener('change', () => {
       if (state.map) state.map.setMapTypeId(els.mapType.value);
     });
+
+    // If keys.local.js is present it populates window.__BPT_KEYS. Pre-fill the
+    // inputs and auto-click Load for zero-friction reopening. The file itself
+    // is gitignored and must never be committed.
+    if (window.__BPT_KEYS) {
+      if (window.__BPT_KEYS.mapsJs) els.jsKey.value = window.__BPT_KEYS.mapsJs;
+      if (window.__BPT_KEYS.elevation) els.elevKey.value = window.__BPT_KEYS.elevation;
+      if (els.jsKey.value) loadMap();
+    }
   </script>
 </body>
 </html>

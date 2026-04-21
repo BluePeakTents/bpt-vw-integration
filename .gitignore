@@ -1,0 +1,12 @@
+# Local key files - never commit
+tests/keys.local.js
+.env.local
+.env
+local.settings.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
