@@ -40,7 +40,6 @@ Feature scope (which app, which user, what map does) still undefined. POC proves
 - Google Maps feature: which app, which user, what the map does, what the input is (venue name, address, lat/lng). Spec not yet written. API stack decided (see Key Decisions Log).
 - API access pattern for v1: direct call from VW to api.anthropic.com vs through `claude-proxy` Azure Function.
 - Dataverse near-term delivery: export-to-md script vs direct API via `dataverse-proxy`.
-- Dev key distribution to Cody. Options: (a) share out-of-band via Slack/1Password/email, Cody creates his own `tests/keys.local.js` from `tests/keys.local.example.js`; (b) make repo private again, commit keys to repo, revert to public when done; (c) commit to public repo — not recommended, see KNOWN ISSUES.
 
 ---
 
@@ -50,7 +49,7 @@ Feature scope (which app, which user, what map does) still undefined. POC proves
    - **Key A - backend (Elevation REST):** IP-restricted to the Azure Function outbound IP. Stored as `GOOGLE_MAPS_ELEVATION_KEY` in `local.settings.json` and SWA Application Settings. Used by `elevation-proxy` Azure Function and by `tests/elevation-smoke-test.sh`.
    - **Key B - browser (Maps JavaScript API + ElevationService):** HTTP-referrer-restricted to app domains (e.g. `https://<appname>.azurestaticapps.net/*`, `http://localhost:*/*` for dev). Stored as `GOOGLE_MAPS_JS_KEY`. Used by the browser to load Maps JS and call `ElevationService` (same SDK, same key). Referrer-restricted browser keys are designed to be visible.
 2. Define the Google Maps feature scope: which app, which user, what the map does, what the input is (venue name, address, lat/lng). Required before spec can be written.
-3. Distribute keys to Cody for local dev. See OPEN DECISIONS re: delivery mechanism.
+3. Kyle: store the Google Maps / Elevation API key in the BPT shared 1Password vault and grant Cody access. Onboarding steps for Cody are in `tests/keys.local.example.js`.
 4. Jon to answer the 7 sales intake questions in VW-11 Phase 2 comments so Claude Project vs custom UI decision can close.
 5. Jon to define new Dataverse table requirements (capacity guide, layout standards, site requirements, furniture dimensions) per VW-11 Phase 2 action items.
 
@@ -62,6 +61,7 @@ Feature scope (which app, which user, what map does) still undefined. POC proves
 - **2026-04-21** - Google Maps integration, if built, will follow the proxy pattern (`maps-proxy` or equivalent Azure Function), same shape as `dataverse-proxy`, `claude-proxy`, `qbo-query`. Rationale: keeps keys off the frontend, enables centralized logging and caching, allows provider swap without touching callers.
 - **2026-04-21** - Google API stack for the map feature: **Maps JavaScript API** for the interactive 2D satellite view (load with `libraries: ['geometry', 'drawing']`), plus **Elevation API** for site grade/slope checks. Rationale: the Embed API is too limited (no custom markers, no click handlers, no polygons at real-world scale). Maps JavaScript API supports polygons/rectangles/circles sized in lat/lng and meters — suitable for rendering tent footprints at actual dimensions. The `geometry` library handles spherical math (compute corner lat/lngs from center + length + width + rotation, distance, area). The `drawing` library gives an interactive UI for users to draw footprints. Elevation API called from a backend proxy; JS API called from the browser with a referrer-restricted key. Pricing: JS API ~$7/1k loads with ~28,500 free loads/month from the $200 credit; Elevation API ~$5/1k requests. Mercator distortion is negligible at tent scale in continental US.
 - **2026-04-21** - **Two elevation access paths by layer:** browser code uses `google.maps.ElevationService` (part of the Maps JS SDK), backend code uses the raw REST endpoint `https://maps.googleapis.com/maps/api/elevation/json`. Rationale: the REST endpoint does not return CORS headers for browser origins (empirically confirmed during the POC — `file://` origin `null` was blocked, and even `localhost` would not receive CORS headers). `ElevationService` routes the same query through the Maps JS auth path using the Maps JS key. Implication for the production proxy: the proxy only needs to handle server-side callers (other Azure Functions, the VW plugin); browser callers in ops-app / sales-app UIs should use `ElevationService` directly and avoid a round-trip.
+- **2026-04-21** - **Dev key distribution via BPT shared 1Password vault.** Each developer creates their own gitignored `tests/keys.local.js` from `tests/keys.local.example.js` and pastes in the values from 1Password. Rationale: the repo is public, so committing keys would trigger Google's auto-revocation partnership with GitHub secret scanning. Rejected alternatives: flipping the repo private to commit keys (adds history pollution and friction), sharing via Slack/email (weaker audit trail than 1Password).
 
 ---
 
