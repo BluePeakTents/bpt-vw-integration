@@ -120,11 +120,14 @@
           <input type="text" id="jsKey" placeholder="AIzaSy...">
         </label>
         <label>
-          Elevation API key
-          <input type="text" id="elevKey" placeholder="AIzaSy... (same as above if one key)">
+          Elevation API key (reference only)
+          <input type="text" id="elevKey" placeholder="AIzaSy... (used by backend shell test)">
         </label>
         <div class="hint">
-          Keys live only in this page session. Not stored, not sent anywhere but Google.
+          This page uses <code>google.maps.ElevationService</code>, which authenticates through
+          the Maps JS SDK using the Maps JS key above. The Elevation key field is kept for
+          reference and is exercised by <code>tests/elevation-smoke-test.sh</code> from a backend
+          shell. Keys live only in this page session.
         </div>
       </fieldset>
 
@@ -191,7 +194,7 @@
     const state = {
       map: null,
       tents: [],
-      elevKey: null,
+      elevator: null,
     };
 
     function setStatus(text, cls) {
@@ -211,19 +214,39 @@
     }
 
     async function queryElevation(latLng) {
-      if (!state.elevKey) {
-        return { error: 'No Elevation key provided.' };
+      // Uses google.maps.ElevationService (Maps JS SDK) instead of a raw REST
+      // fetch to /elevation/json. The REST endpoint rejects browser-origin
+      // requests (CORS: origin `null` for file://, no CORS headers returned).
+      // ElevationService goes through the Maps JS auth path using the same key
+      // that loaded the SDK. Separately, tests/elevation-smoke-test.sh exercises
+      // the raw REST API from a backend shell (the production proxy path).
+      if (!state.elevator) {
+        return { error: 'ElevationService not initialized.' };
       }
-      const url = 'https://maps.googleapis.com/maps/api/elevation/json' +
-                  '?locations=' + latLng.lat() + ',' + latLng.lng() +
-                  '&key=' + encodeURIComponent(state.elevKey);
-      try {
-        const resp = await fetch(url);
-        const data = await resp.json();
-        return data;
-      } catch (e) {
-        return { error: e.message };
-      }
+      return new Promise((resolve) => {
+        state.elevator.getElevationForLocations({
+          locations: [latLng]
+        }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            resolve({
+              status: 'OK',
+              results: [{
+                elevation: results[0].elevation,
+                resolution: results[0].resolution,
+                location: {
+                  lat: results[0].location.lat(),
+                  lng: results[0].location.lng()
+                }
+              }]
+            });
+          } else {
+            resolve({
+              status: status || 'UNKNOWN',
+              error_message: 'ElevationService returned status: ' + status
+            });
+          }
+        });
+      });
     }
 
     async function handleMapClick(e) {
@@ -273,12 +296,10 @@
 
     function loadMap() {
       const jsKey = els.jsKey.value.trim();
-      const elevKey = els.elevKey.value.trim() || jsKey;
       if (!jsKey) {
         setStatus('FAIL: Maps JS key is required.', 'err');
         return;
       }
-      state.elevKey = elevKey;
 
       if (window.google && window.google.maps) {
         setStatus('Map already loaded. Reload the page to change keys.', 'err');
@@ -297,6 +318,7 @@
             tilt: 0,
             streetViewControl: false,
           });
+          state.elevator = new google.maps.ElevationService();
           state.map.addListener('click', handleMapClick);
           setStatus('OK: Map loaded. Click anywhere to place a tent and query elevation.', 'ok');
         } catch (err) {
