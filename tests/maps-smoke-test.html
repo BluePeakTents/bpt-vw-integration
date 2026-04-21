@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BPT Maps JavaScript API Smoke Test</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 20px; }
+    h1 { margin: 0 0 10px 0; }
+    #status { padding: 12px; margin: 10px 0; font-weight: 600; border-radius: 4px; }
+    .pending { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+    .pass { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    #map { height: 600px; width: 100%; border: 1px solid #ccc; }
+    .notes { font-size: 14px; color: #555; margin: 10px 0; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Maps JavaScript API smoke test</h1>
+  <p class="notes">
+    Usage: open this file with a <code>?key=YOUR_MAPS_JS_KEY</code> query parameter.
+    Example: <code>maps-smoke-test.html?key=AIza...</code>
+  </p>
+  <p class="notes">
+    Expected on pass: hybrid (satellite + labels) map of downtown Chicago at zoom 20, with a blue
+    polygon drawn at real-world dimensions 18m (long axis, north-south) x 6m (short axis, east-west)
+    centered on the Willis Tower coordinate. Verifies API load, geometry library, and real-world
+    polygon sizing.
+  </p>
+  <div id="status" class="pending">Loading...</div>
+  <div id="map"></div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get('key');
+    const statusEl = document.getElementById('status');
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = cls;
+    }
+
+    function tentPolygon(center, lengthM, widthM, rotationDeg) {
+      // Returns 4 LatLng corners of a rectangle centered at `center`,
+      // long axis `lengthM` oriented at bearing `rotationDeg` from north.
+      const spherical = google.maps.geometry.spherical;
+      const halfL = lengthM / 2;
+      const halfW = widthM / 2;
+      const diag = Math.sqrt(halfL * halfL + halfW * halfW);
+      const alpha = Math.atan2(halfW, halfL) * 180 / Math.PI;
+      return [alpha, 180 - alpha, 180 + alpha, 360 - alpha].map(
+        b => spherical.computeOffset(center, diag, b + rotationDeg)
+      );
+    }
+
+    if (!key) {
+      setStatus('FAIL: no key provided. Append ?key=YOUR_MAPS_JS_KEY to the URL.', 'fail');
+    } else {
+      window.initMap = function () {
+        try {
+          const center = { lat: 41.8665, lng: -87.6173 };
+          const map = new google.maps.Map(document.getElementById('map'), {
+            zoom: 20,
+            center: center,
+            mapTypeId: 'hybrid',
+            tilt: 0
+          });
+
+          const corners = tentPolygon(center, 18, 6, 0);
+          new google.maps.Polygon({
+            paths: corners,
+            strokeColor: '#0066FF',
+            strokeWeight: 2,
+            fillColor: '#0066FF',
+            fillOpacity: 0.35,
+            map: map
+          });
+
+          const area = google.maps.geometry.spherical.computeArea(corners);
+          setStatus(
+            'PASS: Maps JS API loaded. Hybrid map rendered. Geometry library computed polygon area = ' +
+            area.toFixed(2) + ' m² (expected ~108 m² for 18 x 6).',
+            'pass'
+          );
+        } catch (e) {
+          setStatus('FAIL: ' + e.message, 'fail');
+        }
+      };
+
+      // Called by Maps JS when the key is rejected (bad key, wrong referrer, API not enabled).
+      window.gm_authFailure = function () {
+        setStatus(
+          'FAIL: API key authentication failed. Check that (1) Maps JavaScript API is enabled in ' +
+          'the Cloud project, (2) the key allows this referrer, (3) billing is enabled.',
+          'fail'
+        );
+      };
+
+      const script = document.createElement('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) +
+                   '&libraries=geometry,drawing&callback=initMap&v=weekly';
+      script.async = true;
+      script.onerror = function () {
+        setStatus('FAIL: script failed to load from maps.googleapis.com.', 'fail');
+      };
+      document.head.appendChild(script);
+    }
+  </script>
+</body>
+</html>
