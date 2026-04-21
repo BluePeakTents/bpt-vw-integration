@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BPT Maps + Elevation local UI</title>
+  <style>
+    :root {
+      --bpt-blue: #0066FF;
+      --bg: #f7f7f8;
+      --panel: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --ok: #1f7a3a;
+      --err: #a42626;
+      --border: #d9d9d9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 16px 24px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { margin: 0; font-size: 18px; }
+    header p { margin: 4px 0 0 0; color: var(--muted); font-size: 13px; }
+    main {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 16px;
+      padding: 16px;
+      height: calc(100vh - 80px);
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    fieldset {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 12px;
+      margin: 0 0 12px 0;
+    }
+    legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+    label { display: block; margin: 6px 0; font-size: 13px; }
+    input[type=text], input[type=number] {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    button {
+      padding: 8px 14px;
+      border: 1px solid var(--bpt-blue);
+      background: var(--bpt-blue);
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button.secondary {
+      background: white;
+      color: var(--bpt-blue);
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #map {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .status.pending { background: #fff9db; border: 1px solid #ffe58f; color: #614a00; }
+    .status.ok { background: #e6f4ea; border: 1px solid #b7dfc5; color: var(--ok); }
+    .status.err { background: #fde7e7; border: 1px solid #f3bdbd; color: var(--err); }
+    .kv { font-size: 13px; margin: 4px 0; }
+    .kv .k { color: var(--muted); display: inline-block; min-width: 110px; }
+    .kv .v { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+    details { margin-top: 8px; font-size: 12px; }
+    details pre {
+      background: #f4f4f4;
+      padding: 8px;
+      border-radius: 3px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Maps + Elevation local UI</h1>
+    <p>Click the map after loading to place a tent polygon and query elevation at the click point.</p>
+  </header>
+
+  <main>
+    <div class="panel">
+      <fieldset>
+        <legend>Keys</legend>
+        <label>
+          Maps JS API key
+          <input type="text" id="jsKey" placeholder="AIzaSy...">
+        </label>
+        <label>
+          Elevation API key
+          <input type="text" id="elevKey" placeholder="AIzaSy... (same as above if one key)">
+        </label>
+        <div class="hint">
+          Keys live only in this page session. Not stored, not sent anywhere but Google.
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Tent dimensions</legend>
+        <div class="row">
+          <label>Length (m)<input type="number" id="lengthM" value="18" min="1" step="0.5"></label>
+          <label>Width (m)<input type="number" id="widthM" value="6" min="1" step="0.5"></label>
+          <label>Rotation (°)<input type="number" id="rotation" value="0" min="0" max="359" step="5"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Map</legend>
+        <label>
+          Map type
+          <select id="mapType">
+            <option value="hybrid">Hybrid (satellite + labels)</option>
+            <option value="satellite">Satellite (no labels)</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <button id="loadBtn">Load map</button>
+
+      <div id="status" class="status pending" style="margin-top: 16px;">Waiting for key and Load click.</div>
+
+      <fieldset>
+        <legend>Last click</legend>
+        <div class="kv"><span class="k">Coordinates:</span> <span class="v" id="lastCoord">-</span></div>
+        <div class="kv"><span class="k">Elevation:</span> <span class="v" id="elevation">-</span></div>
+        <div class="kv"><span class="k">Polygon area:</span> <span class="v" id="tentArea">-</span></div>
+        <div class="kv"><span class="k">Tents placed:</span> <span class="v" id="tentCount">0</span></div>
+        <details>
+          <summary>Raw Elevation API response</summary>
+          <pre id="rawResponse">-</pre>
+        </details>
+        <button id="clearBtn" class="secondary" style="margin-top: 8px;">Clear tents</button>
+      </fieldset>
+    </div>
+
+    <div id="map"></div>
+  </main>
+
+  <script>
+    const els = {
+      jsKey: document.getElementById('jsKey'),
+      elevKey: document.getElementById('elevKey'),
+      lengthM: document.getElementById('lengthM'),
+      widthM: document.getElementById('widthM'),
+      rotation: document.getElementById('rotation'),
+      mapType: document.getElementById('mapType'),
+      loadBtn: document.getElementById('loadBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      status: document.getElementById('status'),
+      lastCoord: document.getElementById('lastCoord'),
+      elevation: document.getElementById('elevation'),
+      tentArea: document.getElementById('tentArea'),
+      tentCount: document.getElementById('tentCount'),
+      rawResponse: document.getElementById('rawResponse'),
+    };
+
+    const state = {
+      map: null,
+      tents: [],
+      elevKey: null,
+    };
+
+    function setStatus(text, cls) {
+      els.status.textContent = text;
+      els.status.className = 'status ' + cls;
+    }
+
+    function tentPolygon(center, lengthM, widthM, rotationDeg) {
+      const s = google.maps.geometry.spherical;
+      const halfL = lengthM / 2;
+      const halfW = widthM / 2;
+      const diag = Math.sqrt(halfL * halfL + halfW * halfW);
+      const alpha = Math.atan2(halfW, halfL) * 180 / Math.PI;
+      return [alpha, 180 - alpha, 180 + alpha, 360 - alpha].map(
+        b => s.computeOffset(center, diag, b + rotationDeg)
+      );
+    }
+
+    async function queryElevation(latLng) {
+      if (!state.elevKey) {
+        return { error: 'No Elevation key provided.' };
+      }
+      const url = 'https://maps.googleapis.com/maps/api/elevation/json' +
+                  '?locations=' + latLng.lat() + ',' + latLng.lng() +
+                  '&key=' + encodeURIComponent(state.elevKey);
+      try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        return data;
+      } catch (e) {
+        return { error: e.message };
+      }
+    }
+
+    async function handleMapClick(e) {
+      const latLng = e.latLng;
+      els.lastCoord.textContent = latLng.lat().toFixed(6) + ', ' + latLng.lng().toFixed(6);
+
+      const length = parseFloat(els.lengthM.value);
+      const width = parseFloat(els.widthM.value);
+      const rotation = parseFloat(els.rotation.value);
+
+      const corners = tentPolygon(latLng, length, width, rotation);
+      const polygon = new google.maps.Polygon({
+        paths: corners,
+        strokeColor: '#0066FF',
+        strokeWeight: 2,
+        fillColor: '#0066FF',
+        fillOpacity: 0.35,
+        map: state.map,
+      });
+      state.tents.push(polygon);
+      els.tentCount.textContent = state.tents.length;
+
+      const area = google.maps.geometry.spherical.computeArea(corners);
+      els.tentArea.textContent = area.toFixed(2) + ' m² (expected ' + (length * width).toFixed(2) + ')';
+
+      els.elevation.textContent = 'querying...';
+      const data = await queryElevation(latLng);
+      els.rawResponse.textContent = JSON.stringify(data, null, 2);
+
+      if (data.status === 'OK' && data.results && data.results[0]) {
+        const r = data.results[0];
+        els.elevation.textContent = r.elevation.toFixed(2) + ' m (±' + r.resolution.toFixed(1) + ' m)';
+      } else if (data.error) {
+        els.elevation.textContent = 'FAIL: ' + data.error;
+      } else {
+        els.elevation.textContent = 'FAIL: ' + (data.status || 'unknown') +
+                                    (data.error_message ? ' - ' + data.error_message : '');
+      }
+    }
+
+    function clearTents() {
+      state.tents.forEach(p => p.setMap(null));
+      state.tents = [];
+      els.tentCount.textContent = '0';
+      els.tentArea.textContent = '-';
+    }
+
+    function loadMap() {
+      const jsKey = els.jsKey.value.trim();
+      const elevKey = els.elevKey.value.trim() || jsKey;
+      if (!jsKey) {
+        setStatus('FAIL: Maps JS key is required.', 'err');
+        return;
+      }
+      state.elevKey = elevKey;
+
+      if (window.google && window.google.maps) {
+        setStatus('Map already loaded. Reload the page to change keys.', 'err');
+        return;
+      }
+
+      setStatus('Loading Maps JS...', 'pending');
+      els.loadBtn.disabled = true;
+
+      window.initMap = function () {
+        try {
+          state.map = new google.maps.Map(document.getElementById('map'), {
+            zoom: 19,
+            center: { lat: 41.8665, lng: -87.6173 },
+            mapTypeId: els.mapType.value,
+            tilt: 0,
+            streetViewControl: false,
+          });
+          state.map.addListener('click', handleMapClick);
+          setStatus('OK: Map loaded. Click anywhere to place a tent and query elevation.', 'ok');
+        } catch (err) {
+          setStatus('FAIL initializing map: ' + err.message, 'err');
+        }
+      };
+
+      window.gm_authFailure = function () {
+        setStatus(
+          'FAIL: Maps JS API authentication. Check (1) key valid, (2) Maps JavaScript API enabled ' +
+          'in Cloud project, (3) referrer restriction allows this origin, (4) billing enabled.',
+          'err'
+        );
+      };
+
+      const script = document.createElement('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(jsKey) +
+                   '&libraries=geometry,drawing&callback=initMap&v=weekly';
+      script.async = true;
+      script.onerror = function () {
+        setStatus('FAIL: script load error from maps.googleapis.com.', 'err');
+      };
+      document.head.appendChild(script);
+    }
+
+    els.loadBtn.addEventListener('click', loadMap);
+    els.clearBtn.addEventListener('click', clearTents);
+    els.mapType.addEventListener('change', () => {
+      if (state.map) state.map.setMapTypeId(els.mapType.value);
+    });
+  </script>
+</body>
+</html>
